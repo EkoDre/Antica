@@ -147,6 +147,7 @@ export default async function handler(req, res) {
       )
 
     await mailersend.email.send(emailParams)
+    console.log('Inquiry email sent to info@anticavenetianplaster.com for lead:', name, projectType)
 
     const confirmationFrom = new Sender(
       'info@anticavenetianplaster.com',
