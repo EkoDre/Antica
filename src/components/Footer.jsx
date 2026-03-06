@@ -70,11 +70,16 @@ export default function Footer() {
           <p className="text-[10px] font-light tracking-wider text-ivory/25 sm:text-xs">
             &copy; {year} Antica Venetian Plaster. All rights reserved.
           </p>
-          <span className="flex items-center gap-2 text-[10px] font-light tracking-wider text-ivory/25 sm:text-xs">
+          <a
+            href="https://ekomadevpn.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-[10px] font-light tracking-wider text-ivory/25 transition-colors hover:text-ivory/50 no-underline sm:text-xs"
+          >
             Powered by
             <img src={ekomadeLogo} alt="EkoMade Labs" className="h-5 w-auto sm:h-6" />
             EkoMade Labs
-          </span>
+          </a>
         </div>
       </div>
     </footer>
