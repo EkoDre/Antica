@@ -79,9 +79,12 @@ function CategoryTile({ category, index, onClick }) {
             {category.name}
           </h3>
           <div className="mt-3 h-px w-8 bg-gold/50 transition-all duration-500 group-hover:w-16" />
+          <span className="mt-4 inline-block border border-ivory/30 bg-charcoal/40 px-5 py-2 text-[10px] font-medium tracking-[0.25em] uppercase text-ivory backdrop-blur-sm sm:text-xs lg:hidden">
+            View Gallery
+          </span>
         </div>
 
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-500 group-hover:opacity-100">
+        <div className="absolute inset-0 hidden items-center justify-center opacity-0 transition-opacity duration-500 group-hover:opacity-100 lg:flex">
           <span className="border border-ivory/30 bg-charcoal/50 px-6 py-2.5 text-[10px] font-medium tracking-[0.25em] uppercase text-ivory backdrop-blur-sm sm:text-xs">
             View Gallery
           </span>
