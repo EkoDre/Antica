@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { name, email, projectType, message } = req.body || {}
+  const { name, email, phone, projectType, message } = req.body || {}
 
   if (!name || !email || !projectType) {
     return res.status(400).json({ error: 'Please fill in all required fields.' })
@@ -96,6 +96,12 @@ export default async function handler(req, res) {
                     </p>
                   </td>
                 </tr>
+                ${phone ? `<tr>
+                  <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
+                    <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Phone</p>
+                    <p style="margin:0;font-size:15px"><a href="tel:${phone.replace(/\s/g, '')}" style="color:#2c2c2c;text-decoration:none">${phone}</a></p>
+                  </td>
+                </tr>` : ''}
                 <tr>
                   <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Requested Finish</p>
@@ -137,7 +143,7 @@ export default async function handler(req, res) {
 </html>`
       )
       .setText(
-        `NEW CONSULTATION LEAD\n${submittedAt}\n${'—'.repeat(40)}\n\nClient: ${name}\nEmail: ${email}\nFinish: ${projectType}\n\nMessage:\n${message || '(No message provided)'}\n\n${'—'.repeat(40)}\nSubmitted via anticavenetianplaster.com`
+        `NEW CONSULTATION LEAD\n${submittedAt}\n${'—'.repeat(40)}\n\nClient: ${name}\nEmail: ${email}\n${phone ? `Phone: ${phone}\n` : ''}Finish: ${projectType}\n\nMessage:\n${message || '(No message provided)'}\n\n${'—'.repeat(40)}\nSubmitted via anticavenetianplaster.com`
       )
 
     await mailersend.email.send(emailParams)
@@ -196,6 +202,7 @@ export default async function handler(req, res) {
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:3px;color:#af944d;font-family:sans-serif">YOUR INQUIRY</p>
                     <p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Finish:</p>
                     <p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${projectType}</p>
+                    ${phone ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Phone:</p><p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${phone}</p>` : ''}
                     ${message ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Message:</p><p style="margin:0;font-size:14px;color:#2c2c2c;line-height:1.6">${message.replace(/\n/g, '<br>')}</p>` : ''}
                   </td>
                 </tr>
@@ -238,7 +245,7 @@ export default async function handler(req, res) {
 </html>`
       )
       .setText(
-        `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\ninfo@anticavenetianplaster.com`
+        `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\ninfo@anticavenetianplaster.com`
       )
 
     await mailersend.email.send(confirmationParams).catch((err) => {

@@ -19,6 +19,7 @@ export default function Contact() {
   const [form, setForm] = useState({
     name: '',
     email: '',
+    phone: '',
     projectType: '',
     message: '',
   })
@@ -142,6 +143,24 @@ export default function Contact() {
                     value={form.email}
                     onChange={handleChange}
                     placeholder="your@email.com"
+                    className="rounded-none border-b border-charcoal/15 bg-transparent px-0 py-3 text-sm font-light tracking-wide text-charcoal outline-none transition-colors placeholder:text-charcoal/25 focus:border-gold"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 md:col-span-2">
+                  <label
+                    htmlFor="phone"
+                    className="text-[11px] font-medium tracking-[0.2em] uppercase text-charcoal/40"
+                  >
+                    Phone Number <span className="font-normal text-charcoal/30">(optional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    value={form.phone}
+                    onChange={handleChange}
+                    placeholder="(555) 123-4567"
                     className="rounded-none border-b border-charcoal/15 bg-transparent px-0 py-3 text-sm font-light tracking-wide text-charcoal outline-none transition-colors placeholder:text-charcoal/25 focus:border-gold"
                   />
                 </div>
