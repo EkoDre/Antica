@@ -1,4 +1,4 @@
-import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend'
+import sgMail from '@sendgrid/mail'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,42 +11,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Please fill in all required fields.' })
   }
 
-  const apiKey = process.env.MAILERSEND_API_KEY
+  const apiKey = process.env.SENDGRID_API_KEY
   if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
-    console.error('MAILERSEND_API_KEY is missing or empty in Vercel environment variables.')
+    console.error('SENDGRID_API_KEY is missing or empty in environment variables.')
     return res.status(503).json({
       error:
         'Email service is not configured. Please try again later or email us directly at info@anticavenetianplaster.com.',
     })
   }
 
-  try {
-    const mailersend = new MailerSend({ apiKey: apiKey.trim() })
+  sgMail.setApiKey(apiKey.trim())
 
-    const sentFrom = new Sender('info@anticavenetianplaster.com', 'Antica Website')
+  const submittedAt = new Date().toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/New_York',
+    timeZoneName: 'short',
+  })
 
-    const recipients = [
-      new Recipient('info@anticavenetianplaster.com', 'Antica Venetian Plaster'),
-    ]
-
-    const submittedAt = new Date().toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'America/New_York',
-      timeZoneName: 'short',
-    })
-
-    const emailParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo(recipients)
-      .setReplyTo(new Recipient(email, name))
-      .setSubject(`New Lead: ${name} — ${projectType}`)
-      .setHtml(
-        `<!DOCTYPE html>
+  const leadHtml = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background-color:#f8f6f1;font-family:'Georgia','Times New Roman',serif">
@@ -141,39 +128,23 @@ export default async function handler(req, res) {
   </table>
 </body>
 </html>`
-      )
-      .setText(
-        `NEW CONSULTATION LEAD\n${submittedAt}\n${'—'.repeat(40)}\n\nClient: ${name}\nEmail: ${email}\n${phone ? `Phone: ${phone}\n` : ''}Finish: ${projectType}\n\nMessage:\n${message || '(No message provided)'}\n\n${'—'.repeat(40)}\nSubmitted via anticavenetianplaster.com`
-      )
 
-    await mailersend.email.send(emailParams)
-    console.log('Inquiry email sent to info@anticavenetianplaster.com for lead:', name, projectType)
+  const leadText = `NEW CONSULTATION LEAD\n${submittedAt}\n${'—'.repeat(40)}\n\nClient: ${name}\nEmail: ${email}\n${phone ? `Phone: ${phone}\n` : ''}Finish: ${projectType}\n\nMessage:\n${message || '(No message provided)'}\n\n${'—'.repeat(40)}\nSubmitted via anticavenetianplaster.com`
 
-    const backupParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo([new Recipient('nicholasgjelaj@outlook.com', 'Nicholas Gjelaj')])
-      .setReplyTo(new Recipient(email, name))
-      .setSubject(`New Lead: ${name} — ${projectType}`)
-      .setHtml(emailParams.html)
-      .setText(emailParams.text)
-
-    await mailersend.email.send(backupParams).catch((err) => {
-      console.error('Backup email to Outlook failed:', err)
+  try {
+    await sgMail.send({
+      to: 'info@anticavenetianplaster.com',
+      from: { email: 'info@anticavenetianplaster.com', name: 'Antica Website' },
+      replyTo: { email, name },
+      subject: `New Lead: ${name} — ${projectType}`,
+      html: leadHtml,
+      text: leadText,
     })
-
-    const confirmationFrom = new Sender(
-      'info@anticavenetianplaster.com',
-      'Antica Venetian Plaster'
-    )
+    console.log('Inquiry email sent to info@anticavenetianplaster.com for lead:', name, projectType)
 
     const firstName = name.split(' ')[0]
 
-    const confirmationParams = new EmailParams()
-      .setFrom(confirmationFrom)
-      .setTo([new Recipient(email, name)])
-      .setSubject('Thank You for Your Inquiry — Antica Venetian Plaster')
-      .setHtml(
-        `<!DOCTYPE html>
+    const confirmationHtml = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background-color:#f8f6f1;font-family:'Georgia','Times New Roman',serif">
@@ -256,29 +227,46 @@ export default async function handler(req, res) {
   </table>
 </body>
 </html>`
-      )
-      .setText(
-        `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\ninfo@anticavenetianplaster.com`
-      )
 
-    await mailersend.email.send(confirmationParams).catch((err) => {
-      console.error('Confirmation email failed:', err)
-    })
+    const confirmationText = `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\ninfo@anticavenetianplaster.com`
+
+    console.log('Sending confirmation email to:', email)
+    try {
+      await sgMail.send({
+        to: email,
+        from: { email: 'info@anticavenetianplaster.com', name: 'Antica Venetian Plaster' },
+        subject: 'Thank You for Your Inquiry — Antica Venetian Plaster',
+        html: confirmationHtml,
+        text: confirmationText,
+      })
+      console.log('Confirmation email sent to:', email)
+    } catch (confirmErr) {
+      console.error('Confirmation email failed:', confirmErr?.response?.status, confirmErr?.response?.body?.errors, confirmErr?.message)
+    }
 
     return res.status(200).json({ success: true })
   } catch (err) {
-    const status = err?.body?.statusCode ?? err?.statusCode ?? err?.response?.status
-    const msg = err?.body?.message ?? err?.message ?? ''
-    console.error('MailerSend error:', status, msg, err)
+    const statusCode = err?.response?.status ?? err?.response?.statusCode ?? err?.code
+    const bodyErrors = err?.response?.body?.errors
+    const msg = err?.message ?? bodyErrors?.[0]?.message ?? ''
+    const isForbidden = statusCode === 403 || (msg && String(msg).toLowerCase().includes('forbidden'))
+    if (bodyErrors?.length) console.error('SendGrid error body:', JSON.stringify(bodyErrors, null, 2))
+    console.error('SendGrid error:', statusCode, msg)
 
-    if (status === 401) {
+    if (statusCode === 401) {
       return res.status(503).json({
         error:
           'Email service configuration error. Please try again later or email us at info@anticavenetianplaster.com.',
       })
     }
+    if (isForbidden) {
+      return res.status(503).json({
+        error:
+          'Email sender not verified in SendGrid. Verify info@anticavenetianplaster.com in SendGrid → Settings → Sender Authentication, then try again.',
+      })
+    }
     return res.status(500).json({
-      error: `Email error (${status || 'unknown'}): ${msg || 'Unknown error'}. Please email us directly at info@anticavenetianplaster.com.`,
+      error: `Email error: ${msg || 'Unknown error'}. Please email us directly at info@anticavenetianplaster.com.`,
     })
   }
 }
