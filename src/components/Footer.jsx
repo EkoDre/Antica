@@ -71,7 +71,7 @@ export default function Footer() {
             &copy; {year} Antica Venetian Plaster. All rights reserved.
           </p>
           <a
-            href="https://ekomadevpn.com"
+            href="https://ekomadelabs.co"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-[10px] font-light tracking-wider text-ivory/25 transition-colors hover:text-ivory/50 no-underline sm:text-xs"
