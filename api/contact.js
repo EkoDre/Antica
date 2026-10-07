@@ -54,11 +54,12 @@ export default async function handler(req, res) {
 
   const body = req.body || {}
 
-  // Honeypot: real visitors never see or fill the hidden "hp_trap" field; bots do.
-  // Pretend it worked so the bot moves on, but send nothing.
-  if (typeof body.hp_trap === 'string' && body.hp_trap.trim() !== '') {
-    return res.status(200).json({ success: true })
-  }
+  // Spam trap: the hidden "hp_trap" field is usually filled only by bots, but
+  // browser autofill can fill it for real visitors too. So never drop the lead:
+  // still send it to the Antica inbox, flagged, and skip the confirmation email
+  // (that email is what a spammer would abuse to reach other people).
+  const looksLikeSpam = typeof body.hp_trap === 'string' && body.hp_trap.trim() !== ''
+  if (looksLikeSpam) console.warn('Spam trap field was filled; sending lead flagged as possible spam.')
 
   const name = oneLine(clean(body.name, LIMITS.name))
   const email = oneLine(clean(body.email, LIMITS.email))
@@ -215,7 +216,7 @@ export default async function handler(req, res) {
       from: { email: INBOX, name: 'Antica Website' },
       to: INBOX,
       replyTo: { email, name },
-      subject: `New Lead: ${name} — ${projectType}`,
+      subject: `${looksLikeSpam ? '[Possible spam] ' : ''}New Lead: ${name} — ${projectType}`,
       html: leadHtml,
       text: leadText,
     })
@@ -236,6 +237,10 @@ export default async function handler(req, res) {
       return res.status(503).json({ error: `We're receiving a lot of inquiries right now. ${FALLBACK}` })
     }
     return res.status(500).json({ error: `We couldn't send your inquiry. ${FALLBACK}` })
+  }
+
+  if (looksLikeSpam) {
+    return res.status(200).json({ success: true })
   }
 
   // 2) Confirmation email to the visitor. A failure here is logged only;
