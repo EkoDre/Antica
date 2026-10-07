@@ -1,8 +1,9 @@
-// Contact form handler — sends email through Resend (https://resend.com).
-// Needs one environment variable: RESEND_API_KEY.
-// The sending domain (anticavenetianplaster.com) must be verified in Resend.
+// Contact form handler — sends email through SendGrid (paid Essentials plan).
+// Needs one environment variable: SENDGRID_API_KEY.
+// info@anticavenetianplaster.com must be a verified sender in SendGrid.
 
-const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+import sgMail from '@sendgrid/mail'
+
 const INBOX = 'info@anticavenetianplaster.com'
 const FALLBACK = `Please try again later or email us directly at ${INBOX}.`
 
@@ -32,30 +33,18 @@ function clean(value, max) {
   return value.trim().slice(0, max)
 }
 
-async function sendEmail(apiKey, payload) {
-  const response = await fetch(RESEND_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  let data = {}
+// Send one email; on failure, throw an error carrying the HTTP status SendGrid returned.
+async function sendEmail(payload) {
   try {
-    data = await response.json()
-  } catch {
-    data = {}
+    return await sgMail.send(payload)
+  } catch (err) {
+    const status = Number(err?.code ?? err?.response?.statusCode) || 0
+    const details = err?.response?.body?.errors
+    const wrapped = new Error(details?.[0]?.message || err?.message || 'SendGrid error')
+    wrapped.status = status
+    wrapped.details = details
+    throw wrapped
   }
-
-  if (!response.ok) {
-    const err = new Error(data?.message || `Resend responded with ${response.status}`)
-    err.status = response.status
-    err.name = data?.name || 'resend_error'
-    throw err
-  }
-  return data
 }
 
 export default async function handler(req, res) {
@@ -87,11 +76,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Please choose a finish from the list.' })
   }
 
-  const apiKey = (process.env.RESEND_API_KEY || '').trim()
+  const apiKey = (process.env.SENDGRID_API_KEY || '').trim()
   if (!apiKey) {
-    console.error('RESEND_API_KEY is missing or empty in environment variables.')
+    console.error('SENDGRID_API_KEY is missing or empty in environment variables.')
     return res.status(503).json({ error: `Email service is not configured. ${FALLBACK}` })
   }
+  sgMail.setApiKey(apiKey)
 
   const firstName = name.split(' ')[0]
 
@@ -221,23 +211,25 @@ export default async function handler(req, res) {
 
   // 1) Lead email to the Antica inbox. If this fails, tell the visitor.
   try {
-    await sendEmail(apiKey, {
-      from: `Antica Website <${INBOX}>`,
-      to: [INBOX],
-      reply_to: email,
+    await sendEmail({
+      from: { email: INBOX, name: 'Antica Website' },
+      to: INBOX,
+      replyTo: { email, name },
       subject: `New Lead: ${name} — ${projectType}`,
       html: leadHtml,
       text: leadText,
     })
     console.log('Inquiry email sent for lead:', name, projectType)
   } catch (err) {
-    console.error('Resend error (lead email):', err.status, err.name, err.message)
+    console.error('SendGrid error (lead email):', err.status, err.message)
+    if (err.details?.length) console.error('SendGrid error body:', JSON.stringify(err.details))
 
-    if (err.status === 401 || (err.status === 403 && /api_key/.test(err.name))) {
+    if (err.status === 401) {
+      // Bad or revoked API key, or the account isn't on an active plan.
       return res.status(503).json({ error: `Email service configuration error. ${FALLBACK}` })
     }
     if (err.status === 403) {
-      // Usually: anticavenetianplaster.com is not verified in Resend yet.
+      // Usually: info@anticavenetianplaster.com isn't a verified sender in SendGrid.
       return res.status(503).json({ error: `Email service is not fully set up yet. ${FALLBACK}` })
     }
     if (err.status === 429) {
@@ -335,17 +327,17 @@ export default async function handler(req, res) {
   const confirmationText = `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\n${INBOX}`
 
   try {
-    await sendEmail(apiKey, {
-      from: `Antica Venetian Plaster <${INBOX}>`,
-      to: [email],
-      reply_to: INBOX,
+    await sendEmail({
+      from: { email: INBOX, name: 'Antica Venetian Plaster' },
+      to: email,
+      replyTo: INBOX,
       subject: 'Thank You for Your Inquiry — Antica Venetian Plaster',
       html: confirmationHtml,
       text: confirmationText,
     })
     console.log('Confirmation email sent to:', email)
   } catch (err) {
-    console.error('Resend error (confirmation email):', err.status, err.name, err.message)
+    console.error('SendGrid error (confirmation email):', err.status, err.message)
   }
 
   return res.status(200).json({ success: true })
