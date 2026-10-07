@@ -1,26 +1,114 @@
-import sgMail from '@sendgrid/mail'
+// Contact form handler — sends email through Resend (https://resend.com).
+// Needs one environment variable: RESEND_API_KEY.
+// The sending domain (anticavenetianplaster.com) must be verified in Resend.
+
+const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+const INBOX = 'info@anticavenetianplaster.com'
+const FALLBACK = `Please try again later or email us directly at ${INBOX}.`
+
+const FINISH_OPTIONS = ['Marmorino', 'Grassello', 'Metallic Finish', 'Tadelakt', 'Custom Texture']
+
+const LIMITS = { name: 100, email: 254, phone: 40, message: 5000 }
+
+const EMAIL_RE = /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]{2,}$/
+
+// Escape anything a visitor typed before it goes into an HTML email.
+function esc(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// Collapse line breaks so a value is safe in a subject line.
+function oneLine(value) {
+  return String(value).replace(/[\r\n\t]+/g, ' ').trim()
+}
+
+function clean(value, max) {
+  if (typeof value !== 'string') return ''
+  return value.trim().slice(0, max)
+}
+
+async function sendEmail(apiKey, payload) {
+  const response = await fetch(RESEND_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  let data = {}
+  try {
+    data = await response.json()
+  } catch {
+    data = {}
+  }
+
+  if (!response.ok) {
+    const err = new Error(data?.message || `Resend responded with ${response.status}`)
+    err.status = response.status
+    err.name = data?.name || 'resend_error'
+    throw err
+  }
+  return data
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { name, email, phone, projectType, message } = req.body || {}
+  const body = req.body || {}
+
+  // Honeypot: real visitors never see or fill the hidden "hp_trap" field; bots do.
+  // Pretend it worked so the bot moves on, but send nothing.
+  if (typeof body.hp_trap === 'string' && body.hp_trap.trim() !== '') {
+    return res.status(200).json({ success: true })
+  }
+
+  const name = oneLine(clean(body.name, LIMITS.name))
+  const email = oneLine(clean(body.email, LIMITS.email))
+  const phone = oneLine(clean(body.phone, LIMITS.phone))
+  const projectType = clean(body.projectType, 50)
+  const message = clean(body.message, LIMITS.message)
 
   if (!name || !email || !projectType) {
     return res.status(400).json({ error: 'Please fill in all required fields.' })
   }
-
-  const apiKey = process.env.SENDGRID_API_KEY
-  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
-    console.error('SENDGRID_API_KEY is missing or empty in environment variables.')
-    return res.status(503).json({
-      error:
-        'Email service is not configured. Please try again later or email us directly at info@anticavenetianplaster.com.',
-    })
+  if (!EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' })
+  }
+  if (!FINISH_OPTIONS.includes(projectType)) {
+    return res.status(400).json({ error: 'Please choose a finish from the list.' })
   }
 
-  sgMail.setApiKey(apiKey.trim())
+  const apiKey = (process.env.RESEND_API_KEY || '').trim()
+  if (!apiKey) {
+    console.error('RESEND_API_KEY is missing or empty in environment variables.')
+    return res.status(503).json({ error: `Email service is not configured. ${FALLBACK}` })
+  }
+
+  const firstName = name.split(' ')[0]
+
+  // HTML-safe versions of everything the visitor typed.
+  const s = {
+    name: esc(name),
+    firstName: esc(firstName),
+    email: esc(email),
+    phone: esc(phone),
+    projectType: esc(projectType),
+    message: esc(message).replace(/\r?\n/g, '<br>'),
+  }
+  const telHref = phone.replace(/[^\d+]/g, '')
+  const replyHref = esc(
+    `mailto:${email}?subject=${encodeURIComponent(`Re: Your Antica Inquiry – ${projectType}`)}` +
+      `&body=${encodeURIComponent(`Hi ${firstName},\n\nThank you for your interest in Antica Venetian Plaster.\n\n`)}`
+  )
 
   const submittedAt = new Date().toLocaleString('en-US', {
     weekday: 'long',
@@ -72,33 +160,33 @@ export default async function handler(req, res) {
                 <tr>
                   <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Client Name</p>
-                    <p style="margin:0;font-size:16px;color:#2c2c2c;font-weight:600">${name}</p>
+                    <p style="margin:0;font-size:16px;color:#2c2c2c;font-weight:600">${s.name}</p>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Email</p>
                     <p style="margin:0;font-size:15px">
-                      <a href="mailto:${email}" style="color:#2c2c2c;text-decoration:none">${email}</a>
+                      <a href="mailto:${s.email}" style="color:#2c2c2c;text-decoration:none">${s.email}</a>
                     </p>
                   </td>
                 </tr>
                 ${phone ? `<tr>
                   <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Phone</p>
-                    <p style="margin:0;font-size:15px"><a href="tel:${phone.replace(/\s/g, '')}" style="color:#2c2c2c;text-decoration:none">${phone}</a></p>
+                    <p style="margin:0;font-size:15px"><a href="tel:${telHref}" style="color:#2c2c2c;text-decoration:none">${s.phone}</a></p>
                   </td>
                 </tr>` : ''}
                 <tr>
                   <td style="padding:16px 0;border-bottom:1px solid #f0ede6">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Requested Finish</p>
-                    <p style="margin:0;font-size:15px;color:#2c2c2c;font-weight:600">${projectType}</p>
+                    <p style="margin:0;font-size:15px;color:#2c2c2c;font-weight:600">${s.projectType}</p>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding:16px 0">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:2px;color:#af944d;font-family:sans-serif;text-transform:uppercase">Message</p>
-                    <p style="margin:0;font-size:14px;color:#555;line-height:1.7">${message ? message.replace(/\n/g, '<br>') : '<em style="color:#bbb">No message provided</em>'}</p>
+                    <p style="margin:0;font-size:14px;color:#555;line-height:1.7">${message ? s.message : '<em style="color:#bbb">No message provided</em>'}</p>
                   </td>
                 </tr>
               </table>
@@ -107,9 +195,9 @@ export default async function handler(req, res) {
 
           <tr>
             <td style="padding:28px 44px 36px;text-align:center">
-              <a href="mailto:${email}?subject=Re:%20Your%20Antica%20Inquiry%20–%20${encodeURIComponent(projectType)}&body=Hi%20${encodeURIComponent(name.split(' ')[0])},%0A%0AThank%20you%20for%20your%20interest%20in%20Antica%20Venetian%20Plaster.%0A%0A"
+              <a href="${replyHref}"
                 style="display:inline-block;padding:14px 36px;background-color:#2c2c2c;color:#f8f6f1;font-size:11px;letter-spacing:3px;text-decoration:none;font-family:sans-serif;text-transform:uppercase">
-                Reply to ${name.split(' ')[0]}
+                Reply to ${s.firstName}
               </a>
             </td>
           </tr>
@@ -131,20 +219,36 @@ export default async function handler(req, res) {
 
   const leadText = `NEW CONSULTATION LEAD\n${submittedAt}\n${'—'.repeat(40)}\n\nClient: ${name}\nEmail: ${email}\n${phone ? `Phone: ${phone}\n` : ''}Finish: ${projectType}\n\nMessage:\n${message || '(No message provided)'}\n\n${'—'.repeat(40)}\nSubmitted via anticavenetianplaster.com`
 
+  // 1) Lead email to the Antica inbox. If this fails, tell the visitor.
   try {
-    await sgMail.send({
-      to: 'info@anticavenetianplaster.com',
-      from: { email: 'info@anticavenetianplaster.com', name: 'Antica Website' },
-      replyTo: { email, name },
+    await sendEmail(apiKey, {
+      from: `Antica Website <${INBOX}>`,
+      to: [INBOX],
+      reply_to: email,
       subject: `New Lead: ${name} — ${projectType}`,
       html: leadHtml,
       text: leadText,
     })
     console.log('Inquiry email sent for lead:', name, projectType)
+  } catch (err) {
+    console.error('Resend error (lead email):', err.status, err.name, err.message)
 
-    const firstName = name.split(' ')[0]
+    if (err.status === 401 || (err.status === 403 && /api_key/.test(err.name))) {
+      return res.status(503).json({ error: `Email service configuration error. ${FALLBACK}` })
+    }
+    if (err.status === 403) {
+      // Usually: anticavenetianplaster.com is not verified in Resend yet.
+      return res.status(503).json({ error: `Email service is not fully set up yet. ${FALLBACK}` })
+    }
+    if (err.status === 429) {
+      return res.status(503).json({ error: `We're receiving a lot of inquiries right now. ${FALLBACK}` })
+    }
+    return res.status(500).json({ error: `We couldn't send your inquiry. ${FALLBACK}` })
+  }
 
-    const confirmationHtml = `<!DOCTYPE html>
+  // 2) Confirmation email to the visitor. A failure here is logged only;
+  //    the lead already reached the Antica inbox.
+  const confirmationHtml = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background-color:#f8f6f1;font-family:'Georgia','Times New Roman',serif">
@@ -167,10 +271,10 @@ export default async function handler(req, res) {
           <tr>
             <td style="padding:48px 44px 20px">
               <p style="margin:0 0 24px;font-size:16px;color:#2c2c2c;line-height:1.7">
-                Dear ${firstName},
+                Dear ${s.firstName},
               </p>
               <p style="margin:0 0 20px;font-size:15px;color:#555;line-height:1.8">
-                Thank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding <strong style="color:#2c2c2c">${projectType}</strong> and are delighted by your interest in our artisan finishes.
+                Thank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding <strong style="color:#2c2c2c">${s.projectType}</strong> and are delighted by your interest in our artisan finishes.
               </p>
               <p style="margin:0 0 20px;font-size:15px;color:#555;line-height:1.8">
                 Every surface we touch is a collaboration between vision and craft. A member of our team will review the details of your project and be in touch within <strong style="color:#2c2c2c">48 hours</strong> to discuss how we can bring your space to life.
@@ -185,9 +289,9 @@ export default async function handler(req, res) {
                   <td style="padding:20px 24px">
                     <p style="margin:0 0 4px;font-size:10px;letter-spacing:3px;color:#af944d;font-family:sans-serif">YOUR INQUIRY</p>
                     <p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Finish:</p>
-                    <p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${projectType}</p>
-                    ${phone ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Phone:</p><p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${phone}</p>` : ''}
-                    ${message ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Message:</p><p style="margin:0;font-size:14px;color:#2c2c2c;line-height:1.6">${message.replace(/\n/g, '<br>')}</p>` : ''}
+                    <p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${s.projectType}</p>
+                    ${phone ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Phone:</p><p style="margin:0 0 8px;font-size:14px;color:#2c2c2c">${s.phone}</p>` : ''}
+                    ${message ? `<p style="margin:6px 0 2px;font-size:13px;color:#888;font-family:sans-serif">Message:</p><p style="margin:0;font-size:14px;color:#2c2c2c;line-height:1.6">${s.message}</p>` : ''}
                   </td>
                 </tr>
               </table>
@@ -216,7 +320,7 @@ export default async function handler(req, res) {
               <p style="margin:0 0 4px;font-size:12px;color:#999;font-family:sans-serif">470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701</p>
               <p style="margin:0 0 4px;font-size:12px;color:#999;font-family:sans-serif">(914) 886-5730</p>
               <p style="margin:0;font-size:12px;font-family:sans-serif">
-                <a href="mailto:info@anticavenetianplaster.com" style="color:#af944d;text-decoration:none">info@anticavenetianplaster.com</a>
+                <a href="mailto:${INBOX}" style="color:#af944d;text-decoration:none">${INBOX}</a>
               </p>
             </td>
           </tr>
@@ -228,45 +332,21 @@ export default async function handler(req, res) {
 </body>
 </html>`
 
-    const confirmationText = `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\ninfo@anticavenetianplaster.com`
+  const confirmationText = `Dear ${firstName},\n\nThank you for reaching out to Antica Venetian Plaster. We have received your inquiry regarding ${projectType} and are delighted by your interest in our artisan finishes.\n\nA member of our team will review the details of your project and be in touch within 48 hours.\n\nYour Inquiry:\nFinish: ${projectType}\n${phone ? `Phone: ${phone}\n` : ''}${message ? `Message: ${message}\n` : ''}\nExplore our portfolio: https://anticavenetianplaster.com/portfolio\n\nWith warm regards,\nThe Antica Team\n\n—\nAntica Venetian Plaster\n470 Nepperhan Avenue, Ste 220, Yonkers, NY 10701\n(914) 886-5730\n${INBOX}`
 
-    console.log('Sending confirmation email to:', email)
-    try {
-      await sgMail.send({
-        to: email,
-        from: { email: 'info@anticavenetianplaster.com', name: 'Antica Venetian Plaster' },
-        subject: 'Thank You for Your Inquiry — Antica Venetian Plaster',
-        html: confirmationHtml,
-        text: confirmationText,
-      })
-      console.log('Confirmation email sent to:', email)
-    } catch (confirmErr) {
-      console.error('Confirmation email failed:', confirmErr?.response?.status, confirmErr?.response?.body?.errors, confirmErr?.message)
-    }
-
-    return res.status(200).json({ success: true })
-  } catch (err) {
-    const statusCode = err?.response?.status ?? err?.response?.statusCode ?? err?.code
-    const bodyErrors = err?.response?.body?.errors
-    const msg = err?.message ?? bodyErrors?.[0]?.message ?? ''
-    const isForbidden = statusCode === 403 || (msg && String(msg).toLowerCase().includes('forbidden'))
-    if (bodyErrors?.length) console.error('SendGrid error body:', JSON.stringify(bodyErrors, null, 2))
-    console.error('SendGrid error:', statusCode, msg)
-
-    if (statusCode === 401) {
-      return res.status(503).json({
-        error:
-          'Email service configuration error. Please try again later or email us at info@anticavenetianplaster.com.',
-      })
-    }
-    if (isForbidden) {
-      return res.status(503).json({
-        error:
-          'Email sender not verified in SendGrid. Verify info@anticavenetianplaster.com in SendGrid → Settings → Sender Authentication, then try again.',
-      })
-    }
-    return res.status(500).json({
-      error: `Email error: ${msg || 'Unknown error'}. Please email us directly at info@anticavenetianplaster.com.`,
+  try {
+    await sendEmail(apiKey, {
+      from: `Antica Venetian Plaster <${INBOX}>`,
+      to: [email],
+      reply_to: INBOX,
+      subject: 'Thank You for Your Inquiry — Antica Venetian Plaster',
+      html: confirmationHtml,
+      text: confirmationText,
     })
+    console.log('Confirmation email sent to:', email)
+  } catch (err) {
+    console.error('Resend error (confirmation email):', err.status, err.name, err.message)
   }
+
+  return res.status(200).json({ success: true })
 }
