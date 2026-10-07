@@ -22,7 +22,6 @@ export default function Contact() {
     phone: '',
     projectType: '',
     message: '',
-    hp_trap: '',
   })
 
   const handleChange = (e) => {
@@ -109,21 +108,6 @@ export default function Contact() {
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="border border-warm-gray bg-bone p-5 sm:p-8 md:p-12">
-              {/* Spam trap: hidden from people, filled in by bots. Leave empty. */}
-              <div
-                aria-hidden="true"
-                style={{ position: 'absolute', left: '-10000px', width: '1px', height: '1px', overflow: 'hidden' }}
-              >
-                <input
-                  type="text"
-                  name="hp_trap"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={form.hp_trap}
-                  onChange={handleChange}
-                />
-              </div>
-
               <div className="grid gap-5 sm:gap-6 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <label
